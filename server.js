@@ -7,7 +7,11 @@ const port = 3820;
 // Middleware 
 app.use(express.json());
 
-
+let director = [
+  { id: 1, name: 'Christopher Nolan', birthYear: 1970 },
+  { id: 2, name: 'The Wachowskis', birthYear: 1965 },
+  { id: 3, name: 'Steven Spielberg', birthYear: 1946 }
+]
 
 let movies = [
   { id: 1, title: 'Inception', director: 'Christopher Nolan', year: 2010 },
@@ -21,11 +25,12 @@ app.get('/', (req, res) => {
   res.send('Selamat datang belajar API films!');
 });
 
+//movie routes
 app.get('/movies', (req, res) => {
   res.json(movies);
 });
 
-app.get("/movies/:id1", (req, res) => {
+app.get("/movies/:id", (req, res) => {
   const id = Number(req.params.id);
   const movie = movies.find(m => m.id === id);
   if (!movie) return res.status(404).json({ error: "Movie tidak,→ ditemukan" });
@@ -68,10 +73,63 @@ app.put("/movies/:id", (req, res) => {
  });
 
 
+//director routes
+app.get('/directors', (req, res) => {
+  res.json(director);
+});
+
+app.get("/directors/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const directorItem = director.find(d => d.id === id);
+  if (!directorItem) return res.status(404).json({ error: "Director tidak ditemukan" });
+  res.json(directorItem);
+});
+
+app.post("/directors", (req, res) => {
+  const { name, birthYear } = req.body || {};
+  if (!name || !birthYear) {
+    return res.status(400).json({ error: "name, birthYear, wajib diisi" });
+  } 
+  const newDirector = { id: director.length + 1, name, birthYear };
+  director.push(newDirector);
+  res.status(201).json(newDirector);
+});
+
+app.put("/directors/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const directorIndex = director.findIndex(d => d.id === id);   
+  if (directorIndex === -1) {
+    return res.status(404).json({ error: "Director tidak ditemukan" });
+  }
+  const { name, birthYear } = req.body || {};
+  const updatedDirector = { id, name, birthYear };
+  director[directorIndex] = updatedDirector;
+  res.json(updatedDirector);
+});
+
+app.delete("/directors/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const directorIndex = director.findIndex(d => d.id === id); 
+  if (directorIndex === -1) {
+    return res.status(404).json({ error: "Director tidak ditemukan" });
+  }
+  director.splice(directorIndex, 1);
+  res.status(204).send();
+});
+
+
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route tidak ditemukan' });
 });
+
+app.use((err, req, res, _next) => {
+  console.error('[ERROR]', err);
+  res.status(500).json({
+    error: 'Terjadi kesalahan pada server'
+  });
+});
+
 
 //start the server
 app.listen(port, () => {
