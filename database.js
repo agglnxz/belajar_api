@@ -1,76 +1,72 @@
-require('dotenv').config();
-const sqlite3 = require('sqlite3').verbose();
-// const DBSOURCE = process.env.DB_SOURCE || "movies.db";
-// const DBSOURCE2 = process.env.DB_SOURCE || "diretors.db";
+require("dotenv").config();
+const sqlite3 = require("sqlite3").verbose();
+const DBSOURCE = process.env.DB_SOURCE || "movies.db";
+// const DBSOURCE2 = process.env.DB_SOURCE || "directors.db";
+const db = new sqlite3.Database(DBSOURCE, (err) => {
+  if (err) {
+    console.error(err.message);
+    throw err;
+  } else {
+    console.log("Connected to the SQLite database.");
 
+    db.serialize(() => {
+      console.log("Running database setup...");
 
-//inisiasi database
-const db = new sqlite3.Database('./movies.db',(err) => {
-    if (err) {
-        console.error(err.message);
-        throw err;
-    } else {
-        console.log('Connected to the SQLite database movies.');
-        db.run(`CREATE TABLE IF NOT EXISTS movie (
+      db.run(
+        `CREATE TABLE IF NOT EXISTS movies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title text NOT NULL,
-                director text NOT NULL,
+                title TEXT NOT NULL,
+                director TEXT NOT NULL,
                 year INTEGER NOT NULL
-              )`,
-            (err) => {
-                if (err) {
-                    console.log('Gagal membuat tabel movie', err.message);
-                }
-                
-                db.get('SELECT COUNT(*) AS count FROM movie', (err, row) => {
-                    if (err) {
-                        console.error(err.message);
-                    }
+            )`,
+        (err) => {
+          if (err) {
+            console.error("Error creating table:", err.message);
+            return;
+          }
+          console.log('Table "movies" is ready.');
 
-                    if (row.count === 0) {
-                        console.log('menambahkan data awal ke tabel movie');
-                        const insert = 'INSERT INTO movie (title, director, year) VALUES (?,?,?)';
-                        db.run(insert, ["Inception", "Christopher Nolan", 2010]);
-                        db.run(insert, ["The Matrix", "The Wachowskis", 1999]);
-                        db.run(insert, ["Interstellar", "Christopher Nolan", 2014]);
-                    }
-                });
-            });
-    }
+          const sql_check = `SELECT COUNT(*) as count FROM movies`;
+          db.get(sql_check, (err, row) => {
+            if (err) {
+              console.error("Error checking table count:", err.message);
+              return;
+            }
+
+            // 3. Jika kosong, masukkan data awal
+            if (row.count === 0) {
+              console.log("Table is empty, seeding initial data...");
+              const sql_insert = `INSERT INTO movies (title, director, year) VALUES (?,?,?)`;
+
+              db.run(sql_insert, ["Parasite", "Bong Joon-ho", 2019]);
+              db.run(sql_insert, [
+                "The Dark Knight",
+                "Christopher Nolan",
+                2008,
+              ]);
+              // Data yang diperbaiki:
+              db.run(sql_insert, ["Man of Steel", "Zack Snyder", 2013]);
+              db.run(sql_insert, ["Superman Returns", "Bryan Singer", 2006]);
+            }
+          });
+        },
+      );
+      db.run(
+        `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL
+      )`,
+        (err) => {
+          if (err) {
+            console.error("Error creating table:", err.message);
+            return;
+          }
+          console.log('Table "users" is ready.');
+        },
+      );
+    });
+  }
 });
 
-//inisiasi database directors
-const db2 = new sqlite3.Database('./directors.db',(err) => {
-    if (err) {
-        console.error(err.message);
-        throw err;
-    } else {
-        console.log('Connected to the SQLite database directors.');
-        db2.run(`CREATE TABLE IF NOT EXISTS director (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name text NOT NULL,
-                birthYear text NOT NULL
-              )`,
-            (err) => {
-                if (err) {
-                    console.log('Gagal membuat tabel director', err.message);
-                }
-                
-                db2.get('SELECT COUNT(*) AS count FROM director', (err, row) => {
-                    if (err) {
-                        console.error(err.message);
-                    }
-
-                    if (row.count === 0) {
-                        console.log('menambahkan data awal ke tabel director');
-                        const insert = 'INSERT INTO director (name, birthYear) VALUES (?,?)';
-                        db2.run(insert, ["Christopher Nolan", 1970]);
-                        db2.run(insert, ["The Wachowskis", 1980]);
-                        db2.run(insert, ["Herman Febriansah", 1992]);
-                    }
-                });
-            });
-    }
-});
-
-module.exports = {db,db2};
+module.exports = db;
