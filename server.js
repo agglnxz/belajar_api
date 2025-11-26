@@ -5,7 +5,7 @@ const cors = require('cors');
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET;
-const authenticateToken = require('./middleware/middleware.js');
+const {authenticateToken,authorizeRole} = require('./middleware/auth.js');
 //import database
 const db = require('./database.js');
 
@@ -38,7 +38,7 @@ app.get('/status', (req, res) => {
 });
 
 // auth register
-app.post("/register", (req, res) => {
+app.post("/auth/register", (req, res) => {
   const { username, password } = req.body;
   if (!username || !password || password.length < 6) {
     return res.status(400).json({ error: "Invalid username or password" });
@@ -49,8 +49,8 @@ app.post("/register", (req, res) => {
         console.error("error hashing:", err);
         return res.status(500).json({ error: "gagal memproses pendaftaran" });
       }
-      const sql = "INSERT INTO users (username, password) VALUES (?,?)";
-      const params = [username.toLowerCase(), hashedPassword];
+      const sql = "INSERT INTO users (username, password, role) VALUES (?,?,?)";
+      const params = [username.toLowerCase(), hashedPassword, 'user'];
       db.run(sql, params, function (err) {
         if (err) {
           if (err.message.includes(`UNIQUE constraint`)) {
@@ -65,8 +65,9 @@ app.post("/register", (req, res) => {
       });
     });
 });  
+
 //login
-app.post("/login", (req, res) => {
+app.post("/auth/login", (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: "Username or password is missing" });
@@ -82,7 +83,7 @@ app.post("/login", (req, res) => {
       if (err || !isMatch) {
         return res.status(401).json({ error: "Username or password is incorrect" });
       }
-      const payload = { user: { id: user.id, username: user.username } };
+      const payload = { user: { id: user.id, username: user.username , role: user.role } };
       jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" }, (err, token) => {
         if (err) {
           return res.status(500).json({ error: "Failed to generate token" });
@@ -93,10 +94,40 @@ app.post("/login", (req, res) => {
   });
   });
 
+  // auth register
+app.post("/auth/register-admin", (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password || password.length < 6) {
+    return res.status(400).json({ error: "Invalid username or password" });
+  }
 
-//movie routes
+    bcrypt.hash(password, 10, (err, hashedPassword) => {
+      if (err) {
+        console.error("error hashing:", err);
+        return res.status(500).json({ error: "gagal memproses pendaftaran" });
+      }
+      const sql = "INSERT INTO users (username, password, role) VALUES (?,?,?)";
+      const params = [username.toLowerCase(), hashedPassword, 'admin'];
+      db.run(sql, params, function (err) {
+        if (err) {
+          if (err.message.includes(`UNIQUE constraint`)) {
+            return res.status(409).json({ error: "Username admin already exists" });
+          }
+          console.error("Error inserting user :", err);
+          return res.status(500).json({ error: "gagal memproses pendaftaran" });
+        }
+        res
+          .status(201)
+          .json({ message: "User registered successfully", userId: this.lastID });
+      });
+    });
+}); 
+
+
+
+//movies routes
 app.get('/movies', (req, res) => {
-  const sql = "SELECT * FROM movie ORDER BY id ASC";
+  const sql = "SELECT * FROM movies ORDER BY id ASC";
   db.all(sql, [], (err, rows) => {
     if (err) {
       return res.status(400).json({ "error": err.message });
@@ -107,7 +138,7 @@ app.get('/movies', (req, res) => {
 });
 
 app.get("/movies/:id", (req, res) => {
-   const sql = "SELECT * FROM movie WHERE id = ?";
+   const sql = "SELECT * FROM movies WHERE id = ?";
    db.get(sql, [req.params.id], (err, row) => {
       if (err) {
         return res.status(500).json({ "error": err.message });
@@ -124,7 +155,7 @@ app.get("/movies/:id", (req, res) => {
    if (!title || !director || !year) {
      return res.status(400).json({ error: "title, director, year,→ wajib diisi"});
      }
-   const sql = 'INSERT INTO movie (title, director, year) VALUES (?,?,?)';
+   const sql = 'INSERT INTO movies (title, director, year) VALUES (?,?,?)';
     db.run(sql, [title, director, year], function(err) {
       if (err) {
         return res.status(500).json({ "error": err.message });
@@ -134,9 +165,9 @@ app.get("/movies/:id", (req, res) => {
 
  });
 
-app.put("/movies/:id", authenticateToken , (req, res) => {
+app.put("/movies/:id", authenticateToken ,authorizeRole("admin"), (req, res) => {
   const {title, director, year} =req.body;
-  const sql = 'UPDATE movie SET title = ?, director = ?, year = ?  WHERE id = ?';
+  const sql = 'UPDATE movies SET title = ?, director = ?, year = ?  WHERE id = ?';
   db.run(sql, [title, director, year, req.params.id], function(err) {
     if (err) {
       return res.status(500).json({ "error": err.message });
@@ -148,8 +179,8 @@ app.put("/movies/:id", authenticateToken , (req, res) => {
   });
 });
 
-app.delete("/movies/:id", authenticateToken, (req, res) => {
-  const sql = 'DELETE FROM movie WHERE id = ?'; 
+app.delete("/movies/:id", authenticateToken,authorizeRole("admin"), (req, res) => {
+  const sql = 'DELETE FROM movies WHERE id = ?'; 
   db.run(sql, req.params.id, function(err) {
     if (err) {
       return res.status(500).json({ "error": err.message });
@@ -157,78 +188,81 @@ app.delete("/movies/:id", authenticateToken, (req, res) => {
     if (this.changes === 0) {
       return res.status(404).json({ error: "Movie tidak ditemukan" });
     }
-    res.status(204).send();
+    res.status(204).end();
   });
 });
 
 
 
-//director routes
-// app.get('/directors', (req, res) => {
-//   const sql = "SELECT * FROM director ORDER BY id ASC";
-//   db2.all(sql, [], (err, rows) => {
-//     if (err) {
-//       return res.status(400).json({ "error": err.message });
-//     }
-//     res.json({
-//       "message": "success", "data": rows });
-//   });
-// });
+// ===== DIRECTORS ROUTES =====
 
-// app.get("/directors/:id", (req, res) => {
-//    const sql = "SELECT * FROM director WHERE id = ?";
-//    db2.get(sql, [req.params.id], (err, row) => {
-//       if (err) {
-//         return res.status(500).json({ "error": err.message });
-//       }
-//       if (!row) {
-//         return res.status(404).json({ error: "Director tidak ditemukan" });
-//       }
-//       res.json({ "message": "success", "data": row });
-//     });
-//  });
+// GET all directors
+app.get('/directors', (req, res) => {
+  const sql = "SELECT * FROM directors ORDER BY id ASC";
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
 
-//  app.post("/directors", (req, res) => {
-//    const { name, birthYear } = req.body;
-//    if (!name || !birthYear) {
-//      return res.status(400).json({ error: "name, birthYear,→ wajib diisi"});
-//      }
-//    const sql = 'INSERT INTO director (name, birthYear) VALUES (?,?)';
-//     db2.run(sql, [name, birthYear], function(err) {
-//       if (err) {
-//         return res.status(500).json({ "error": err.message });
-//       }
-//       res.status(201).json({ "message": "success", "data": { id: this.lastID, name, birthYear} });
-//     });
+    res.json({ message: "success", data: rows });
+  });
+});
 
-//  });
+// GET director by ID
+app.get("/directors/:id", (req, res) => {
+  const sql = "SELECT * FROM directors WHERE id = ?";
+  db.get(sql, [req.params.id], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: "Director tidak ditemukan" });
 
-// app.put("/directors/:id", (req, res) => {
-//   const { name, birthYear} = req.body;
-//   const sql = 'UPDATE director SET name = ?, birthYear = ? WHERE id = ?';
-//   db2.run(sql, [name, birthYear, req.params.id], function(err) {
-//     if (err) {
-//       return res.status(500).json({ "error": err.message });
-//     }
-//     if (this.changes === 0) {
-//       return res.status(404).json({ error: "Director tidak ditemukan" });
-//     }
-//     res.json({ "message": "success", "data": { id: req.params.id, name, birthYear} });
-//   });
-// });
+    res.json({ message: "success", data: row });
+  });
+});
 
-// app.delete("/directors/:id", (req, res) => {
-//   const sql = 'DELETE FROM Director WHERE id = ?'; 
-//   db2.run(sql, req.params.id, function(err) {
-//     if (err) {
-//       return res.status(500).json({ "error": err.message });
-//     }
-//     if (this.changes === 0) {
-//       return res.status(404).json({ error: "director tidak ditemukan" });
-//     }
-//     res.status(204).send();
-//   });
-// });
+// CREATE director
+app.post("/directors", authenticateToken , (req, res) => {
+  const { name, birth_date, country } = req.body;
+
+  if (!name || !birth_date) {
+    return res.status(400).json({ error: "name & birth_date wajib diisi" });
+  }
+
+  const sql = `INSERT INTO directors (name, birth_date, country) VALUES (?,?,?)`;
+  db.run(sql, [name, birth_date, country || null], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+
+    res.status(201).json({
+      message: "Director created successfully",
+      data: { id: this.lastID, name, birth_date, country }
+    });
+  });
+});
+
+// UPDATE director
+app.put("/directors/:id", authenticateToken,authorizeRole("admin"), (req, res) => {
+  const { name, birth_date, country } = req.body;
+
+  const sql = `UPDATE directors SET name=?, birth_date=?, country=? WHERE id=?`;
+  db.run(sql, [name, birth_date, country, req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: "Director tidak ditemukan" });
+
+    res.json({
+      message: "Director updated",
+      data: { id: req.params.id, name, birth_date, country }
+    });
+  });
+});
+
+// DELETE director
+app.delete("/directors/:id", authenticateToken,authorizeRole("admin"), (req, res) => {
+  const sql = `DELETE FROM directors WHERE id = ?`;
+  db.run(sql, req.params.id, function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: "Director tidak ditemukan" });
+
+    res.status(200).json({ message: "Director deleted successfully" });
+  });
+});
+
 
 
 //start the server

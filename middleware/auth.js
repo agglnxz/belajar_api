@@ -20,4 +20,17 @@ function authenticateToken(req, res, next) {
     });
 }
 
-module.exports = authenticateToken;
+function authorizeRole(role){
+ return (req, res, next) => {
+    if (req.user && req.user.role === role) {
+        return next();
+    }
+     return res.status(403).json({
+      error: "Akses ditolak: role tidak memiliki izin"
+    });
+ };
+}
+
+module.exports = {
+    authenticateToken,
+    authorizeRole};
